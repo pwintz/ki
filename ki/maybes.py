@@ -287,6 +287,14 @@ def repo_ref(repository: git.Repo, sha: str) -> Result[RepoRef, Exception]:
 
 @monadic
 @beartype
+def kirepo_ref(kirepository: KiRepo, sha: str) -> Result[KiRepoRef, Exception]:
+    if not F.ref_exists(kirepository.repo, sha):
+        return Err(GitRefNotFoundError(kirepository.repo, sha))
+    return Ok(KiRepoRef(kirepository, sha))
+
+
+@monadic
+@beartype
 def head_repo_ref(repository: git.Repo) -> Result[RepoRef, Exception]:
     # GitPython raises a ValueError when references don't exist.
     try:

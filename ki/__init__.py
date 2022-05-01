@@ -1643,12 +1643,20 @@ def _pull(kirepo: KiRepo) -> Result[bool, Exception]:
     F.chdir(cwd)
 
     # Create remote pointing to `last_push` repo and pull into `repo`.
+    echo(f"Pulling into {kirepo.repo.working_dir}")
     last_push_remote = kirepo.repo.create_remote(REMOTE_NAME, last_push_repo.git_dir)
     kirepo.repo.git.config("pull.rebase", "false")
+
+    # TODO: There was a bug here, where we didn't set `cwd`, and it caused git
+    # not to be able to find the remote. Can also be done via the command
+    # below:
+    #
+    # result: str = kirepo.repo.git.pull(REMOTE_NAME, BRANCH_NAME)
     p = subprocess.run(
         ["git", "pull", "-v", REMOTE_NAME, BRANCH_NAME],
         check=False,
         capture_output=True,
+        cwd=kirepo.repo.working_dir,
     )
     click.secho(f"{p.stdout.decode()}", bold=True)
     click.secho(f"{p.stderr.decode()}", bold=True)
@@ -1696,17 +1704,25 @@ def push() -> Result[bool, Exception]:
         echo(str(rejected))
         return Err(rejected)
 
+    # Get reference to LAST PUSHED commit of current repo.
+    sha: str = kirepo.last_push_file.read_text()
+    ref: Res[KiRepoRef] = M.kirepo_ref(kirepo, sha)
+    if ref.is_err():
+        echo(str(ref.err()))
+        return ref
+    ref: KiRepoRef = ref.unwrap()
+
     # Get reference to HEAD of current repo.
     head: Res[KiRepoRef] = M.head_kirepo_ref(kirepo)
     if head.is_err():
-        echo(str(head))
+        echo(str(head.err()))
         return head
     head: KiRepoRef = head.unwrap()
 
     # Copy current kirepo into a temp directory (the STAGE), hard reset to
-    # HEAD, and flatten all submodules.
-    stage_kirepo: OkErr = get_ephemeral_kirepo(STAGE_SUFFIX, head, md5sum)
-    stage_kirepo = flatten_staging_repo(stage_kirepo, kirepo)
+    # LAST PUSH, and flatten all submodules.
+    stage_kirepo: OkErr = get_ephemeral_kirepo(STAGE_SUFFIX, ref, md5sum)
+    logger.debug(f"stage_kirepo (after creation): \n{os.listdir(Path(stage_kirepo.unwrap().repo.working_dir) / 'Default')}")
 
     # Pull changes from Anki into the staging repository. At this point, we
     # expect the state of `stage_kirepo` to *exactly* match the state of the
@@ -1725,12 +1741,19 @@ def push() -> Result[bool, Exception]:
     if pulled.is_err():
         echo(str(pulled.err()))
         return pulled
+    logger.debug(f"stage_kirepo (after _pull()): \n{os.listdir(Path(stage_kirepo.unwrap().repo.working_dir) / 'Default')}")
+    stage_kirepo = flatten_staging_repo(stage_kirepo, kirepo)
     stage_kirepo: KiRepo = stage_kirepo.unwrap()
+    logger.debug(f"stage_kirepo (after flattening): \n{os.listdir(Path(stage_kirepo.repo.working_dir) / 'Default')}")
 
     # This statement cannot be any farther down because we must get a reference
     # to HEAD *before* we commit the changes made since the last PUSH. After
     # the following line, the reference we got will be HEAD~1, hence the
     # variable name.
+    #
+    # TODO: This name is now a misnomer, because the `_pull()` call above means
+    # that the staging repo now tracks a divergent branch. In particular, it
+    # tracks exactly the branch of the remote.
     head_1: Res[RepoRef] = M.head_repo_ref(stage_kirepo.repo)
     if head_1.is_err():
         echo(str(head_1.err()))
@@ -1744,7 +1767,7 @@ def push() -> Result[bool, Exception]:
     # as the changes we made within the `unsubmodule_repo()` call within
     # `flatten_staging_repo()`.
     stage_kirepo.repo.git.add(all=True)
-    stage_kirepo.repo.index.commit(f"Pull changes from ref {head.sha}")
+    stage_kirepo.repo.index.commit(f"Add changes up to and including ref {head.sha}")
 
     # Get filter function.
     filter_fn = functools.partial(filter_note_path, patterns=IGNORE, root=kirepo.root)
