@@ -280,6 +280,12 @@ below that this is not what happens:
 The collection cloned above has been adding for testing purposes. See
 `tests/data/collections/symlinks.anki2`.
 
+The card name and ordinal should be parseable from the filename. If not,
+symlink is removed and card goes back to whatever deck the note file is in. If
+a symlink is moved so that its target is invalid, we chop off the '../'
+portions until we get the path relative to the repo root, and then reconstruct
+the correct target from the parent directory of the symlink.
+
 
 
 Mapping database changes to submodules
