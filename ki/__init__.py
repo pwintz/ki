@@ -669,8 +669,9 @@ def validate_decknote_fields(notetype: Notetype, decknote: DeckNote) -> List[War
 # should use other fields when there is not enough content in the first field
 # to get a unique filename, if they exist.
 @beartype
-def get_note_path(sort_field_text: str, deck_dir: ExtantDir, card_name: str = "") -> NoFile:
+def get_note_path(colnote: ColNote, deck_dir: ExtantDir, card_name: str = "") -> NoFile:
     """Get note path from sort field text."""
+    sort_field_text = colnote.sortf_text
     field_text = sort_field_text
 
     # Construct filename, stripping HTML tags and sanitizing (quickly).
@@ -1076,6 +1077,19 @@ def write_repository(
 
 
 @beartype
+def postorder(node: DeckTreeNode) -> List[DeckTreeNode]:
+    """
+    Post-order traversal. Guarantees that we won't process a node until
+    we've processed all its children.
+    """
+    traversal: List[DeckTreeNode] = []
+    for child in node.children:
+        traversal += postorder(child)
+    traversal += [node]
+    return traversal
+
+
+@beartype
 def write_decks(
     col: Collection,
     targetdir: ExtantDir,
@@ -1085,15 +1099,37 @@ def write_decks(
     silent: bool,
 ) -> None:
     """
-    The proper way to do this is a DFS traversal, perhaps recursively, which
-    will make it easier to keep things purely functional, accumulating the
-    model ids of the children in each node. For this, we must construct a tree
-    from the deck names.
+    Write all `ColNote`s to disk in a recursive postorder traversal of the deck
+    tree, which makes it easier to keep things purely functional, accumulating
+    the model ids of the children in each node.
+
+    It must do the following for each deck:
+        - create the deck directory
+        - write the models.json file
+        - create and populate the media directory
+        - write the note payload for each note in the correct deck, exactly
+          once
+
+    In other words, for each deck, we need to write all of its:
+        - models
+        - media
+        - notes
+
+    The first two are cumulative: we want the models and media of subdecks to
+    be included in their ancestors. The notes, however, should not be
+    cumulative. Indeed, we want each note to appear exactly once in the entire
+    repository, making allowances for the case where a single note's cards are
+    spread across multiple decks, in which case we must create a symlink.
+
+    And actually, both of these cases are nicely taken care of for us by the
+    `DeckManager.cids()` function, which has a `children: bool` parameter which
+    toggles whether or not to get the card ids of subdecks or not.
     """
-    # Accumulate pairs of model ids and notetype maps. The return type of the
-    # `ModelManager.get()` call below indicates that it may return `None`,
-    # but we know it will not because we are getting the notetype id straight
-    # from the Anki DB.
+    # Map model ids to `NotetypeDict`s.
+    #
+    # N.B.: the return type of the `ModelManager.get()` call below indicates
+    # that it may return `None`, but we know it will not because we are getting
+    # the notetype id straight from the Anki database.
     models_map: Dict[int, NotetypeDict] = {}
     for nt_name_id in col.models.all_names_and_ids():
         models_map[nt_name_id.id] = col.models.get(nt_name_id.id)
@@ -1102,42 +1138,7 @@ def write_decks(
     with open(targetdir / MODELS_FILE, "w", encoding="UTF-8") as f:
         json.dump(models_map, f, ensure_ascii=False, indent=4, sort_keys=True)
 
-    # Implement new `ColNote`-writing procedure, using `DeckTreeNode`s.
-    #
-    # It must do the following for each deck:
-    # - create the deck directory
-    # - write the models.json file
-    # - create and populate the media directory
-    # - write the note payload for each note in the correct deck, exactly once
-    #
-    # In other words, for each deck, we need to write all of its:
-    # - models
-    # - media
-    # - notes
-    #
-    # The first two are cumulative: we want the models and media of subdecks to
-    # be included in their ancestors. The notes, however, should not be
-    # cumulative. Indeed, we want each note to appear exactly once in the
-    # entire repository, making allowances for the case where a single note's
-    # cards are spread across multiple decks, in which case we must create a
-    # symlink.
-    #
-    # And actually, both of these cases are nicely taken care of for us by the
-    # `DeckManager.cids()` function, which has a `children: bool` parameter
-    # which toggles whether or not to get the card ids of subdecks or not.
     root: DeckTreeNode = col.decks.deck_tree()
-
-    @beartype
-    def postorder(node: DeckTreeNode) -> List[DeckTreeNode]:
-        """
-        Post-order traversal. Guarantees that we won't process a node until
-        we've processed all its children.
-        """
-        traversal: List[DeckTreeNode] = []
-        for child in node.children:
-            traversal += postorder(child)
-        traversal += [node]
-        return traversal
 
     # All card ids we've already processed.
     written_cids: Set[int] = set()
@@ -1149,10 +1150,7 @@ def write_decks(
     # This deck id identifies the deck corresponding to the location where all
     # the symlinks should point.
     written_notes: Dict[int, WrittenNoteFile] = {}
-
-    # TODO: This block is littered with unsafe code. Fix.
     nodes: List[DeckTreeNode] = postorder(root)
-
     bar = tqdm(nodes, ncols=TQDM_NUM_COLS, leave=not silent)
     bar.set_description("Decks")
     for node in bar:
@@ -1226,9 +1224,9 @@ def write_decks(
 
                 # Get card template name.
                 template: TemplateDict = card.template()
-                name: str = template["name"]
+                card_name: str = template["name"]
 
-                note_path: NoFile = get_note_path(colnote.sortf_text, deck_dir, name)
+                note_path: NoFile = get_note_path(colnote.sortf_text, deck_dir, card_name)
                 abs_target: ExtantFile = written_notes[card.nid].file
                 distance = len(note_path.parent.relative_to(targetdir).parts)
                 up_path = Path("../" * distance)
