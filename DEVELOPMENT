@@ -195,6 +195,7 @@ TODO
   https://github.com/ankitects/anki/issues/1018#issuecomment-1153998635
 - Try to see if there is a way to test if non-notetype changes result in a
   syncable database.
+- See #21, perhaps print the deck and nid instead.
 
 16-April-2022
 -------------
@@ -1111,6 +1112,23 @@ Bugs
   git.exc.GitCommandError: Cmd(git) failed due to: exit code(128)
     cmdline: git rm /tmp/tmprlllmg2g/ki-remote/91d921e25437d59c29091b98f50e114e/.gitmodules
     stderr: fatal: pathspec /tmp/tmprlllmg2g/ki-remote/91d921e25437d59c29091b98f50e114e/.gitmodules did not match any files
+
+21.
+
+
+  2022-06-16 05:02:16.561 | WARNING  | ki:get_note_path:693 - Slug for  is empty. Using 933a8d658d4fcec74f95 as filename
+  2022-06-16 05:02:16.562 | WARNING  | ki:get_note_path:693 - Slug for  is empty. Using c2105f4e6dd06287b5bb as filename
+  2022-06-16 05:02:16.563 | WARNING  | ki:get_note_path:693 - Slug for  is empty. Using 79d1bb5de06a7bfb895b as filename
+  2022-06-16 05:02:16.564 | WARNING  | ki:get_note_path:693 - Slug for  is empty. Using 5f0701e9d2b39d11d54d as filename
+  2022-06-16 05:02:16.565 | WARNING  | ki:get_note_path:693 - Slug for  is empty. Using deeeba7cb6133913011e as filename
+  2022-06-16 05:02:16.565 | WARNING  | ki:get_note_path:693 - Slug for  is empty. Using 8b83d446cd16d98bd993 as filename
+  2022-06-16 05:02:16.566 | WARNING  | ki:get_note_path:693 - Slug for  is empty. Using 17568b4df9060e877495 as filename
+  2022-06-16 05:02:16.567 | WARNING  | ki:get_note_path:693 - Slug for  is empty. Using 45143a57bc875f8ab6cd as filename
+  2022-06-16 05:02:16.617 | WARNING  | ki:get_note_path:693 - Slug for  is empty. Using 291cea35dfce0fe37055 as filename
+  2022-06-16 05:02:16.618 | WARNING  | ki:get_note_path:693 - Slug for  is empty. Using 357d8a5e1a6c752a4836 as filename
+  2022-06-16 05:02:16.619 | WARNING  | ki:get_note_path:693 - Slug for  is empty. Using c3f68e2f72ccab153831 as filename
+  2022-06-16 05:02:16.620 | WARNING  | ki:get_note_path:693 - Slug for  is empty. Using 4eaca3f12189d0dfc68d as filename
+  2022-06-16 05:02:16.621 | WARNING  | ki:get_note_path:693 - Slug for  is empty. Using 310558afc1269daf10d3 as filename
 
 
 
