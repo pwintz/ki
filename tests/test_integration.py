@@ -123,6 +123,7 @@ def test_entrypoint():
     assert result.exit_code == 0
 
 
+@pytest.mark.skip
 def test_version():
     """Does --version display information as expected?"""
     expected_version = version("ki")
@@ -147,3 +148,113 @@ def test_cli():
     with pytest.raises(SystemExit):
         ki.ki()
         pytest.fail("CLI doesn't abort asking for a command argument")
+
+
+# COMMON
+
+
+@beartype
+def test_fails_without_ki_subdirectory(tmp_path: Path):
+    """Do pull and push know whether they're in a ki-generated git repo?"""
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        tempdir = tempfile.mkdtemp()
+        copy_tree(GITREPO_PATH, tempdir)
+        os.chdir(tempdir)
+        with pytest.raises(NotKiRepoError):
+            pull(runner)
+        with pytest.raises(NotKiRepoError):
+            push(runner)
+
+
+@beartype
+def test_computes_and_stores_md5sum(tmp_path: Path):
+    """Does ki add new hash to `.ki/hashes`?"""
+    col_file = get_col_file()
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        # Clone collection in cwd.
+        clone(runner, col_file)
+
+        # Check that hash is written.
+        with open(os.path.join(REPODIR, ".ki/hashes"), encoding="UTF-8") as hashes_file:
+            hashes = hashes_file.read()
+            assert "a68250f8ee3dc8302534f908bcbafc6a  collection.anki2" in hashes
+            assert "199216c39eeabe23a1da016a99ffd3e2  collection.anki2" not in hashes
+
+        # Edit collection.
+        shutil.copyfile(EDITED_COLLECTION_PATH, col_file)
+
+        logger.debug(f"CWD: {F.cwd()}")
+
+        # Pull edited collection.
+        os.chdir(REPODIR)
+        pull(runner)
+        os.chdir("../")
+
+        # Check that edited hash is written and old hash is still there.
+        with open(os.path.join(REPODIR, ".ki/hashes"), encoding="UTF-8") as hashes_file:
+            hashes = hashes_file.read()
+            assert "a68250f8ee3dc8302534f908bcbafc6a  collection.anki2" in hashes
+            assert "199216c39eeabe23a1da016a99ffd3e2  collection.anki2" in hashes
+
+
+def test_no_op_pull_push_cycle_is_idempotent():
+    """Do pull/push not misbehave if you keep doing both?"""
+    col_file = get_col_file()
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+
+        # Clone collection in cwd.
+        clone(runner, col_file)
+        assert os.path.isdir(REPODIR)
+
+        os.chdir(REPODIR)
+        out = pull(runner)
+        assert "Merge made by the" not in out
+        push(runner)
+        out = pull(runner)
+        assert "Merge made by the" not in out
+        push(runner)
+        out = pull(runner)
+        assert "Merge made by the" not in out
+        push(runner)
+        out = pull(runner)
+        assert "Merge made by the" not in out
+        push(runner)
+
+
+def test_output():
+    """Does it print nice things?"""
+    col_file = get_col_file()
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        out = clone(runner, col_file)
+        logger.debug(f"\nCLONE:\n{out}")
+
+        # Edit collection.
+        shutil.copyfile(EDITED_COLLECTION_PATH, col_file)
+
+        # Pull edited collection.
+        os.chdir(REPODIR)
+        out = pull(runner)
+        logger.debug(f"\nPULL:\n{out}")
+
+        # Modify local repository.
+        assert os.path.isfile(NOTE_0)
+        with open(NOTE_0, "a", encoding="UTF-8") as note_file:
+            note_file.write("e\n")
+        shutil.copyfile(NOTE_2_PATH, NOTE_2)
+        shutil.copyfile(NOTE_3_PATH, NOTE_3)
+
+        # Commit.
+        os.chdir("../")
+        repo = git.Repo(REPODIR)
+        repo.git.add(all=True)
+        repo.index.commit("Added 'e'.")
+
+        # Push changes.
+        os.chdir(REPODIR)
+        out = push(runner)
+        logger.debug(f"\nPUSH:\n{out}")
+        assert "Overwrote" in out
