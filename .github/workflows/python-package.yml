@@ -32,9 +32,10 @@ jobs:
           pip install pytest wheel
           pip install -r requirements.txt
           pip install -r dev-requirements.txt
+          pip install pyinstrument
       - name: Install ki
         run: |
           pip install .
       - name: Test with pytest
         run: |
-          pytest -v --timeout=15 tests/test_integration.py
+          pyinstrument -m pytest -v --timeout=100 tests/test_integration.py
