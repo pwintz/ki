@@ -32,6 +32,7 @@ from pathlib import Path
 from itertools import chain, starmap, tee
 from functools import reduce
 from collections import namedtuple
+import platform
 
 import git
 import click
@@ -1156,11 +1157,13 @@ def get_target(cwd: Dir, col_file: File, directory: str) -> Tuple[EmptyDir, bool
     path = F.chk(Path(directory) if directory != "" else cwd / col_file.stem)
     new: bool = True
     if isinstance(path, NoPath):
+        # If there is no directory at "path", then create it.
         path.mkdir(parents=True)
         return M.emptydir(path), new
     if isinstance(path, EmptyDir):
         new = False
         return path, new
+    # Otherwise, the path already exists, so raise an error.
     raise TargetExistsError(path)
 
 
@@ -1177,6 +1180,7 @@ def echo_note_change_types(deltas: Iterable[Delta]) -> None:
     modifies = list(filter(is_change_type(MODIFIED), ys))
     types = list(filter(is_change_type(TYPECHANGED), zs))
 
+    # Define left- and right-padding
     LPAD, RPAD = 15, 9
     add_info: str = "ADD".ljust(LPAD) + str(len(adds)).rjust(RPAD)
     delete_info: str = "DELETE".ljust(LPAD) + str(len(deletes)).rjust(RPAD)
@@ -1305,16 +1309,39 @@ def ki() -> None:
 
 
 @ki.command()
-@click.argument("collection")
+@click.argument("collection", required=False, default="")
 @click.argument("directory", required=False, default="")
-def clone(collection: str, directory: str = "") -> None:
+@click.argument("profile", required=False, default="")
+def clone(collection: str, directory: str = "", profile: str = None) -> None:
     """Clone an Anki collection into a directory."""
+    if profile:
+        OS = platform.system()
+        if OS == "Windows":
+            print('Yur on Windows, Harry!')
+            profile_path = Path(os.getenv('APPDATA'), "Anki2", profile)
+            # profile_path = F.chk(Path(os.getenv('APPDATA'), "Anki2", profile))
+        elif OS == "Linux":
+            print('Yur on Linux, Harry!')
+        elif OS == "Darwin":
+            print('Yur on MacOS, Harry!')
+        else:
+            raise ValueError('This OS is not recognized. The path to the Anki collection cannot be automatically detected. Please provide the directory explicitly.')
+        
+        collection_path = Path(profile_path, "collection.anki2")
+
+        # Check that the profile directory and collection file exist.
+        if not profile_path.is_dir():
+            raise IOError(f"The profile \"{profile}\" does not exist at {profile_path}.")
+        if not collection_path.is_file():
+            raise IOError(f"The file  \"collection.anki2\" does not exist at {collection_path}.")
+        
+        collection = str(collection_path)
     _clone1(collection, directory)
 
 
 @beartype
 def _clone1(collection: str, directory: str = "") -> git.Repo:
-    """Execute a clone op."""
+    """Execute a clone operations."""
     col_file: File = M.xfile(Path(collection))
     # Write all files to `targetdir`, and instantiate a `KiRepo` object.
     targetdir, new = get_target(F.cwd(), col_file, directory)
