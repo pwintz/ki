@@ -1317,13 +1317,12 @@ def clone(collection: str, directory: str = "", profile: str = None) -> None:
     if profile:
         OS = platform.system()
         if OS == "Windows":
-            print('Yur on Windows, Harry!')
             profile_path = Path(os.getenv('APPDATA'), "Anki2", profile)
             # profile_path = F.chk(Path(os.getenv('APPDATA'), "Anki2", profile))
         elif OS == "Linux":
-            print('Yur on Linux, Harry!')
+            profile_path = Path("~", ".local", "share", "Anki2")
         elif OS == "Darwin":
-            print('Yur on MacOS, Harry!')
+            profile_path = Path("~", "Library", "Application Support", "Anki2")
         else:
             raise ValueError('This OS is not recognized. The path to the Anki collection cannot be automatically detected. Please provide the directory explicitly.')
         
